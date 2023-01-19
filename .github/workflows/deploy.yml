@@ -1,0 +1,39 @@
+name: Deploy a multi-container project on AWS Elastic Beanstalk with GitHub Actions
+on:
+  push:
+    branches:
+      - main
+
+  jobs:
+    build:
+      runs-on: ubuntu-latest
+      steps:
+        - uses: actions/checkout@v2
+        - run: docker login -u ${{ secrets.DOCKER_USERNAME }} -p ${{ secrets.DOCKER_PASSWORD }}
+        - run: docker build -t arantebw/react-test -f ./client/Dockerfile.dev ./client
+        - run: docker run -e CI=true arantebw/react-test npm test
+
+        - run: docker build -t arantebw/complex-client ./client
+        - run: docker build -t arantebw/complex-nginx ./nginx
+        - run: docker build -t arantebw/complex-server ./server
+        - run: docker build -t arantebw/complex-worker ./worker
+
+        - run: docker push arantebw/complex-client
+        - run: docker push arantebw/complex-nginx
+        - run: docker push arantebw/complex-server
+        - run: docker push arantebw/complex-worker
+
+        - name: Generate a deployment package
+          run: zip -r deploy.zip . -x '*.git*'
+
+        - name: Deploy to AWS Elastic Beanstalk
+          uses: einaregilsson/beanstalk-deploy@v18
+          with:
+            aws_access_key: ${{ secrets.AWS_ACCESS_KEY_ID }}
+            aws_secret_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+            application_name: docker-complex
+            environment_name: Dockercomplex-env
+            existing_bucket_name: elasticbeanstalk-ap-northeast-1-195131237936
+            region: ap-northeast-1
+            version_label: ${{ github.sha }}
+            deployment_package: deploy.zip
